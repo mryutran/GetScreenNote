@@ -19,19 +19,34 @@ jobs:
         with:
           persist-credentials: true
 
+      - name: Setup Version
+        id: setup_version
+        run: echo "VERSION_NAME=ScreenNote-1.0.${{ github.run_number }}.dmg" >> $GITHUB_ENV
+
+      - name: Clean up old DMG
+        run: |
+          # Find and remove old DMG files, keeping the repo clean
+          find . -name "ScreenNote-*.dmg" -type f -delete
+
       - name: Fetch DMG from Private Repo
         run: |
           curl -H "Authorization: token ${{ secrets.PRIVATE_REPO_TOKEN }}" \
                -H "Accept: application/vnd.github.v3.raw" \
                -L "https://api.github.com/repos/mryutran/ScreenNote/contents/dist/ScreenNote.dmg" \
-               --output ScreenNote.dmg
+               --output ${{ env.VERSION_NAME }}
 
-      - name: Commit updated DMG
+      - name: Update Download Links in index.html
+        run: |
+          # Replace all occurrences of the old dmg name with the new versioned one
+          sed -i 's|./ScreenNote.dmg|./${{ env.VERSION_NAME }}|g' index.html
+
+      - name: Commit updated DMG and index.html
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add ScreenNote.dmg
-          git commit -m "Update ScreenNote.dmg from Private Repo" || echo "No changes to commit"
+          git add ${{ env.VERSION_NAME }}
+          git add index.html
+          git commit -m "Feat: Update ScreenNote to version 1.0.${{ github.run_number }}" || echo "No changes to commit"
           git push origin main
 
       - name: Upload artifact
