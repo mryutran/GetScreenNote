@@ -4,8 +4,13 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+# 🚀 Tối ưu: Chỉ chạy job mới nhất nếu có push liên tục (tránh tình trạng cancel thủ công)
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 permissions:
-  contents: write
+  contents: read  # Không cần write nữa vì không commit ngược lại repo
   pages: write
   id-token: write
 
@@ -15,16 +20,12 @@ jobs:
     steps:
       - name: Checkout Public Repo
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Setup Version
         run: echo "VERSION_NAME=ScreenNote-1.0.${{ github.run_number }}.dmg" >> $GITHUB_ENV
 
-      - name: Clean up old DMG files from repo
-        run: |
-          # Remove any previously versioned DMG files from Git tracking
-          git rm -f --ignore-unmatch ScreenNote-*.dmg
+      # 🚀 Tối ưu: Không cần 'git rm' vì ta không commit file này vào repo nữa.
+      # File DMG sẽ chỉ tồn tại trong quá trình build để deploy thôi.
 
       - name: Fetch DMG from Private Repo
         env:
@@ -39,25 +40,14 @@ jobs:
         env:
           DMG_NAME: ${{ env.VERSION_NAME }}
         run: |
-          # Use a regex in sed to replace both the initial "ScreenNote.dmg" 
-          # and any subsequent "ScreenNote-*.dmg" links.
+          # Regex update link download
           sed -i "s|./ScreenNote\\(-.*\\)\\?\\.dmg|./$DMG_NAME|g" index.html
 
-      - name: Commit updated files
-        env:
-          DMG_NAME: ${{ env.VERSION_NAME }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html
-          git add $DMG_NAME
-          # Check if there are staged changes before committing
-          if ! git diff --staged --quiet; then
-            git commit -m "Feat: Update ScreenNote to version 1.0.${{ github.run_number }}"
-            git push origin main
-          else
-            echo "No changes to commit"
-          fi
+      # 🚀 TỐI ƯU QUAN TRỌNG: Đã xoá bước "Commit updated files".
+      # Lý do:
+      # 1. Tránh lặp vô tận (Loop): Job cũ commit -> Kích hoạt Job mới -> Chạy 2 lần.
+      # 2. Giữ repo sạch sẽ: Không lưu file .dmg rác vào lịch sử git.
+      # 3. Nhanh hơn: Bỏ qua bước git add/commit/push tốn thời gian.
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
